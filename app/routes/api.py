@@ -8,7 +8,7 @@ from datetime import datetime
 from app.extensions import db, socketio
 from app.models import (
     User, Room, Channel, Member, Message, UserMusic,
-    MessageReaction, ReadMessage
+    MessageReaction, ReadMessage, RoomBan
 )
 from app.functions import save_uploaded_file, resize_image, is_image_file, is_music_file, is_video_file
 
@@ -230,7 +230,10 @@ def room_settings(room_id):
         flash('Настройки комнаты обновлены')
         return redirect(url_for('main.view_room', room_id=room_id))
     
-    return render_template('room_settings.html', room=room)
+    # Get banned users from RoomBan table
+    room_bans = RoomBan.query.filter_by(room_id=room_id).all()
+    
+    return render_template('room_settings.html', room=room, room_bans=room_bans)
 
 
 @api_bp.route('/channel/<int:channel_id>/mark_read', methods=['POST'])
@@ -586,6 +589,14 @@ def leave_room(room_id):
     if member.role == 'owner':
         return jsonify({'error': 'owner cannot leave his server, delete server for this'}), 403
     
+    # Prevent banned users from leaving (to preserve their ban record)
+    # Check if user is banned from this room
+    room_ban = RoomBan.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    if room_ban:
+        print(f"[LEAVE ROOM] User {current_user.id} attempted to leave while banned from room {room_id}")
+        return jsonify({'error': 'you are banned from this server'}), 403
+    
+    print(f"[LEAVE ROOM] User {current_user.id} left room {room_id}")
     db.session.delete(member)
     db.session.commit()
     
@@ -941,9 +952,6 @@ def ban_user(user_id):
         # Mark target membership as 'banned' so it can be unbanned later
         target_membership = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
         if target_membership:
-            target_membership.role = 'banned'
-            db.session.commit()
-
             # Optional deletion of messages in room
             if data.get('delete_messages'):
                 try:
@@ -958,17 +966,34 @@ def ban_user(user_id):
                 except Exception:
                     db.session.rollback()
 
+            # Create RoomBan record
+            existing_ban = RoomBan.query.filter_by(user_id=user_id, room_id=room_id).first()
+            if not existing_ban:
+                room_ban = RoomBan(
+                    room_id=room_id,
+                    user_id=user_id,
+                    banned_by_id=current_user.id,
+                    reason=ban_reason,
+                    messages_deleted=data.get('delete_messages', False)
+                )
+                db.session.add(room_ban)
+            
+            # Delete the member record so server doesn't appear in dashboard
+            db.session.delete(target_membership)
+            db.session.commit()
+
             # Notify room members to remove this member from UI
             try:
                 socketio.emit('member_removed', {'user_id': user_id, 'room_id': room_id}, room=str(room_id))
             except Exception:
                 pass
 
-            # Notify the banned user (personal room) to redirect to dashboard and remove this server from their list
+            # Notify the banned user in real-time to redirect them
             try:
-                from flask import url_for
-                socketio.emit('force_redirect', {'reason': 'banned', 'location': url_for('main.dashboard')}, room=f"user_{user_id}")
-                socketio.emit('server_removed', {'room_id': room_id}, room=f"user_{user_id}")
+                socketio.emit('force_redirect', {
+                    'location': '/',
+                    'reason': f'You have been banned from {room.name if room else "this room"}. Reason: {ban_reason}'
+                }, room=f"user_{user_id}")
             except Exception:
                 pass
 
@@ -997,11 +1022,26 @@ def ban_user(user_id):
             ips.append(user_ip)
             user.banned_ips = ','.join(ips)
 
-    # Mark the user's memberships as 'banned' in all rooms (preserve record so unban is possible)
+    # Mark the user's memberships as 'banned' in all rooms (create RoomBan records)
     memberships = Member.query.filter_by(user_id=user_id).all()
     room_ids = [m.room_id for m in memberships]
+    
+    # Create RoomBan records for global ban
     for m in memberships:
-        m.role = 'banned'
+        existing_ban = RoomBan.query.filter_by(user_id=user_id, room_id=m.room_id).first()
+        if not existing_ban:
+            room_ban = RoomBan(
+                room_id=m.room_id,
+                user_id=user_id,
+                banned_by_id=current_user.id,
+                reason=ban_reason,
+                messages_deleted=data.get('delete_messages', False)
+            )
+            db.session.add(room_ban)
+    
+    # Delete all member records so servers don't appear in dashboard
+    for m in memberships:
+        db.session.delete(m)
     db.session.commit()
 
     # Optional deletion of all messages for global ban
@@ -1022,20 +1062,28 @@ def ban_user(user_id):
 
     # Notify affected rooms and the user
     try:
+        target_room = f"user_{user_id}"
+        print(f"[GLOBAL BAN] Banning user {user_id} globally to room {target_room}")
+        
         for rid in set(room_ids):
             try:
                 socketio.emit('member_removed', {'user_id': user_id, 'room_id': rid}, room=str(rid))
             except Exception:
                 pass
         from flask import url_for
-        socketio.emit('force_redirect', {'reason': 'banned', 'location': url_for('main.dashboard')}, room=f"user_{user_id}")
+        socketio.emit('force_redirect', {'reason': 'banned', 'location': url_for('main.dashboard')}, room=target_room)
         # Also tell the user's client to remove these servers from their dashboard immediately
         try:
             for rid in set(room_ids):
-                socketio.emit('server_removed', {'room_id': rid}, room=f"user_{user_id}")
-        except Exception:
+                socketio.emit('server_removed', {'room_id': rid}, room=target_room)
+        except Exception as e:
+            print(f"[GLOBAL BAN] ERROR emitting server_removed: {e}")
             pass
-    except Exception:
+        print(f"[GLOBAL BAN] All events emitted for user {user_id}")
+    except Exception as e:
+        print(f"[GLOBAL BAN] ERROR: {e}")
+    except Exception as e:
+        print(f"[GLOBAL BAN DEBUG] ERROR in emit block: {e}")
         pass
 
     return jsonify({
@@ -1078,14 +1126,13 @@ def unban_user(user_id):
             }
             return jsonify({'error': 'not enough rights no unban in this room', 'debug': debug}), 403
 
-        membership = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
-        if not membership:
-            return jsonify({'error': 'user is not in the room'}), 404
-        if membership.role == 'banned':
-            membership.role = 'member'
+        # Delete the RoomBan record to unban
+        room_ban = RoomBan.query.filter_by(user_id=user_id, room_id=room_id).first()
+        if room_ban:
+            db.session.delete(room_ban)
             db.session.commit()
             return jsonify({'success': True, 'message': f'user {user.username} unbanned in room', 'room_id': room_id})
-        return jsonify({'error': 'user is not banned in this toom'}), 400
+        return jsonify({'error': 'user is not banned in this room'}), 400
 
     # Global unban — only superusers
     if not current_user.is_superuser:
@@ -1097,12 +1144,10 @@ def unban_user(user_id):
     user.banned_at = None
     user.banned_ips = ""
 
-    # Reset member roles to 'member' in all rooms (but preserve owner/admin roles)
-    memberships = Member.query.filter_by(user_id=user_id).all()
-    for membership in memberships:
-        if membership.role == 'banned':
-            membership.role = 'member'
-
+    # Unban globally - delete all RoomBan records for this user
+    room_bans = RoomBan.query.filter_by(user_id=user_id).all()
+    for room_ban in room_bans:
+        db.session.delete(room_ban)
     db.session.commit()
 
     return jsonify({

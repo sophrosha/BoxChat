@@ -307,6 +307,17 @@ socket.on('server_removed', function(data) {
         } catch (e) {}
     } catch (e) { console.error('server_removed handler error', e); }
 });
+
+// When banned, force redirect to dashboard
+socket.on('force_redirect', function(data) {
+    try {
+        const loc = (data && data.location) ? data.location : "/";
+        if (loc) {
+            // Immediately redirect without alert
+            window.location = loc;
+        }
+    } catch (e) { console.error('force_redirect handler error', e); }
+});
 </script>
         </div>
     </div>

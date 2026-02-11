@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from datetime import datetime
 from app.extensions import db, socketio
-from app.models import Room, Channel, Member, Message, ReadMessage, User
+from app.models import Room, Channel, Member, Message, ReadMessage, User, RoomBan
 
 main_bp = Blueprint('main', __name__)
 
@@ -64,13 +64,16 @@ def dashboard():
     # Get servers/channels with roles
     servers_query = db.session.query(Room, Member).join(Member).filter(
         Member.user_id == current_user.id,
-        Member.role != 'banned',
         Room.type.in_(['server', 'broadcast'])
     ).all()
     
+    # Filter out servers where user is banned
     servers_with_role = []
+    banned_room_ids = db.session.query(RoomBan.room_id).filter(RoomBan.user_id == current_user.id).all()
+    banned_room_ids = [r[0] for r in banned_room_ids]
+    
     for room, member in servers_query:
-        if room:
+        if room and room.id not in banned_room_ids:
             servers_with_role.append({
                 'room': room,
                 'role': member.role
@@ -187,9 +190,16 @@ def view_room(room_id):
     room = Room.query.get_or_404(room_id)
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
-    if not member or member.role == 'banned':
-        if not (room.is_public and not member):
-            flash('Нет доступа или вы забанены')
+    # Check if user is banned from this room
+    room_ban = RoomBan.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    
+    if room_ban:
+        flash(f'you are banned from this room{": " + room_ban.reason if room_ban.reason else ""}')
+        return redirect(url_for('main.dashboard'))
+    
+    if not member:
+        if not room.is_public:
+            flash('Нет доступа к этой комнате')
             return redirect(url_for('main.dashboard'))
     
     # Get active channel
@@ -279,11 +289,14 @@ def join_room_view(room_id):
     if getattr(current_user, 'is_banned', False):
         flash('your account is banned and cannot join rooms')
         return redirect(url_for('main.dashboard'))
-    # If there's an existing membership marked as banned, prevent re-join
-    existing = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
-    if existing and existing.role == 'banned':
-        flash('you are banned from this room and cannot join')
+    # Check if user is banned from this room
+    room_ban = RoomBan.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    if room_ban:
+        flash(f'you are banned from this room{": " + room_ban.reason if room_ban.reason else ""}')
         return redirect(url_for('main.dashboard'))
+    
+    # Check if user already has membership
+    existing = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
     if room.is_public:
         if not existing:
@@ -303,12 +316,14 @@ def join_room_by_invite(token):
         flash('your account is banned and cannot join rooms')
         return redirect(url_for('main.dashboard'))
 
-    existing = Member.query.filter_by(user_id=current_user.id, room_id=room.id).first()
-    if existing and existing.role == 'banned':
-        flash('you are banned from this room and cannot join')
+    # Check if user is banned from this room
+    room_ban = RoomBan.query.filter_by(user_id=current_user.id, room_id=room.id).first()
+    if room_ban:
+        flash(f'you are banned from this room{": " + room_ban.reason if room_ban.reason else ""}')
         return redirect(url_for('main.dashboard'))
 
     # Check if user is already a member
+    existing = Member.query.filter_by(user_id=current_user.id, room_id=room.id).first()
     if not existing:
         m = Member(user_id=current_user.id, room_id=room.id, role='member')
         db.session.add(m)
@@ -326,6 +341,7 @@ def view_profile(user_id):
     viewer_role = None
     is_room_creator = False
     profile_member_role = None
+    is_banned_in_room = False
     if room_id:
         m = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
         if m:
@@ -337,4 +353,8 @@ def view_profile(user_id):
         target_m = Member.query.filter_by(user_id=user.id, room_id=room_id).first()
         if target_m:
             profile_member_role = target_m.role
-    return render_template('profile_preview.html', profile_user=user, current_user=current_user, viewer_role=viewer_role, room_id=room_id, is_room_creator=is_room_creator, profile_member_role=profile_member_role)
+        # Check if user is banned in this room
+        room_ban = RoomBan.query.filter_by(user_id=user.id, room_id=room_id).first()
+        if room_ban:
+            is_banned_in_room = True
+    return render_template('profile_preview.html', profile_user=user, current_user=current_user, viewer_role=viewer_role, room_id=room_id, is_room_creator=is_room_creator, profile_member_role=profile_member_role, is_banned_in_room=is_banned_in_room)

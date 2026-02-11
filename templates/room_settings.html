@@ -39,20 +39,19 @@
             
             <div class="card" style="margin-top: 18px;">
                 <h3 style="margin-top: 0;">Banned members</h3>
-                {% set banned = room.members | selectattr('role', 'equalto', 'banned') | list %}
-                {% if banned|length > 0 %}
+                {% if room_bans|length > 0 %}
                 <div style="display:flex; flex-direction:column; gap:8px;">
-                    {% for m in banned %}
+                    {% for ban in room_bans %}
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px; border:1px solid var(--border); border-radius:6px; background: var(--bg-panel);">
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <img src="{{ m.user.avatar_url or 'https://via.placeholder.com/40' }}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
+                            <img src="{{ ban.user.avatar_url or 'https://via.placeholder.com/40' }}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
                             <div>
-                                <div style="font-weight:600;">{{ m.user.username }}</div>
+                                <div style="font-weight:600;">{{ ban.user.username }}</div>
                                 <div style="font-size:0.85rem;color:var(--text-muted);">Banned</div>
                             </div>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            <button class="btn" onclick="unbanFromRoom({{ m.user.id }}, {{ room.id }});">Unban</button>
+                            <button class="btn" onclick="unbanFromRoom({{ ban.user.id }}, {{ room.id }});">Unban</button>
                         </div>
                     </div>
                     {% endfor %}
@@ -77,31 +76,67 @@ function previewAvatar(input) {
 }
 
 function deleteRoomAvatar(roomId) {
-    if (!confirm('Delete server icon?')) return;
+    if (typeof window.showConfirm === 'function') {
+        window.showConfirm('Delete Icon', 'Delete server icon?', function() {
     
-    fetch(`/room/${roomId}/avatar/delete`, { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
-        }
-    });
+            fetch(`/room/${roomId}/avatar/delete`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    if (typeof window.showAlert === 'function') {
+                        window.showAlert('Error', data.error || 'Unknown error');
+                    } else {
+                        alert('Error: ' + (data.error || 'Unknown error'));
+                    }
+                }
+            });
+        }, 'Delete', 'danger');
+    } else {
+        if (!confirm('Delete server icon?')) return;
+        fetch(`/room/${roomId}/avatar/delete`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        });
+    }
 }
 </script>
 <script>
 function unbanFromRoom(userId, roomId) {
-    if (!confirm('Unban this user from the room?')) return;
-    fetch(`/admin/user/${userId}/unban`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
-    .then(r => r.json())
-    .then(res => {
-        if (res.success) {
-            location.reload();
-        } else {
-            alert(res.error || res.message || 'Error');
-        }
-    });
+    if (typeof window.showConfirm === 'function') {
+        window.showConfirm('Unban User', 'Unban this user from the room?', function() {
+            fetch(`/admin/user/${userId}/unban`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    location.reload();
+                } else {
+                    if (typeof window.showAlert === 'function') {
+                        window.showAlert('Error', res.error || res.message || 'Error');
+                    } else {
+                        alert(res.error || res.message || 'Error');
+                    }
+                }
+            });
+        }, 'Unban', 'danger');
+    } else {
+        if (!confirm('Unban this user from the room?')) return;
+        fetch(`/admin/user/${userId}/unban`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                location.reload();
+            } else {
+                alert(res.error || res.message || 'Error');
+            }
+        });
+    }
 }
 </script>
 {% endblock %}

@@ -6,4 +6,7 @@ from app.extensions import socketio
 app = create_app()
 
 if __name__ == '__main__':
-    socketio.run(app, allow_unsafe_werkzeug=True)
+    print("[SERVER STARTUP] Starting BoxChat...")
+    print("[SERVER CONFIG] Socket.IO running on port 5000")
+    socketio.run(app, allow_unsafe_werkzeug=True, debug=False)
+

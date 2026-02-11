@@ -35,4 +35,19 @@ class Member(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     room_id = db.Column(db.Integer, db.ForeignKey('room.id', ondelete='CASCADE'), nullable=False)
-    role = db.Column(db.String(20), default='member')  # 'owner', 'admin', 'member', 'banned'
+    role = db.Column(db.String(20), default='member')  # 'owner', 'admin', 'member'
+
+class RoomBan(db.Model):
+    # Room ban record (separate from membership)
+    id = db.Column(db.Integer, primary_key=True)
+    room_id = db.Column(db.Integer, db.ForeignKey('room.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    banned_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    reason = db.Column(db.String(500), nullable=True)
+    banned_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
+    messages_deleted = db.Column(db.Boolean, default=False)
+    
+    # Relationships
+    room = db.relationship('Room', foreign_keys=[room_id])
+    user = db.relationship('User', foreign_keys=[user_id])
+    banned_by = db.relationship('User', foreign_keys=[banned_by_id])

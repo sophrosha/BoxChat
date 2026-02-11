@@ -14,19 +14,37 @@ def on_join(data):
     
     if channel_id:
         join_room(str(channel_id))
+        if hasattr(current_user, 'id'):
+            print(f"[SOCKET JOIN] User {current_user.id} joined channel room: {channel_id}")
     
     # Join personal notification room
     try:
         if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
-            join_room(f"user_{current_user.id}")
-    except:
+            room_name = f"user_{current_user.id}"
+            join_room(room_name)
+            print(f"[SOCKET JOIN] User {current_user.id} joined notification room: {room_name}")
+    except Exception as e:
+        print(f"[SOCKET JOIN ERROR] Failed to join notification room: {e}")
         pass
 
 @socketio.on('connect')
 def on_connect():
     # Handle new socket connection: mark user online and notify rooms
+    print(f"[SOCKET CONNECT] Connection event received")
     try:
         if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+            user_id = current_user.id
+            room_name = f"user_{user_id}"
+            print(f"[SOCKET CONNECT] User {user_id} ({current_user.username}) is authenticated")
+            
+            # Join user's personal notification room immediately
+            try:
+                join_room(room_name)
+                print(f"[SOCKET CONNECT] ✓ User {user_id} joined notification room: {room_name}")
+            except Exception as e:
+                print(f"[SOCKET CONNECT] ✗ Failed to join notification room: {e}")
+                raise
+            
             # Respect user's hide_status preference
             if getattr(current_user, 'hide_status', False):
                 current_user.presence_status = 'hidden'
@@ -34,17 +52,31 @@ def on_connect():
                 current_user.presence_status = 'online'
             current_user.last_seen = None
             db.session.commit()
+            print(f"[SOCKET CONNECT] ✓ User {user_id} status set to online")
+            
             # Notify members in all channels of the rooms user is member of
-            memberships = Member.query.filter_by(user_id=current_user.id).all()
+            memberships = Member.query.filter_by(user_id=user_id).all()
+            print(f"[SOCKET CONNECT] User {user_id} has {len(memberships)} memberships")
+            
             for m in memberships:
                 # For each channel in the room, emit presence update so clients viewing channel update status
                 for ch in m.room.channels:
-                    socketio.emit('presence_updated', {
-                        'user_id': current_user.id,
-                        'username': current_user.username,
-                        'status': current_user.presence_status
-                    }, room=str(ch.id), skip_sid=None)  # Include sender in emission
-    except Exception:
+                    try:
+                        socketio.emit('presence_updated', {
+                            'user_id': current_user.id,
+                            'username': current_user.username,
+                            'status': current_user.presence_status
+                        }, room=str(ch.id), skip_sid=None)  # Include sender in emission
+                    except Exception as e:
+                        print(f"[SOCKET CONNECT] Error emitting presence for channel {ch.id}: {e}")
+            
+            print(f"[SOCKET CONNECT] ✓ User {user_id} fully connected")
+        else:
+            print(f"[SOCKET CONNECT] No authenticated user found")
+    except Exception as e:
+        print(f"[SOCKET CONNECT] ✗ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
         pass
 
@@ -52,8 +84,11 @@ def on_connect():
 @socketio.on('disconnect')
 def on_disconnect():
     # Mark user offline and notify rooms
+    user_id = None
     try:
         if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+            user_id = current_user.id
+            print(f"[SOCKET DISCONNECT] User {user_id} disconnecting...")
             # Respect hide_status: if hidden, keep hidden; otherwise set offline
             if getattr(current_user, 'hide_status', False):
                 current_user.presence_status = 'hidden'
@@ -61,7 +96,8 @@ def on_disconnect():
                 current_user.presence_status = 'offline'
             current_user.last_seen = datetime.utcnow()
             db.session.commit()
-            memberships = Member.query.filter_by(user_id=current_user.id).all()
+            print(f"[SOCKET DISCONNECT] User {user_id} status set to offline, notifying rooms...")
+            memberships = Member.query.filter_by(user_id=user_id).all()
             for m in memberships:
                 for ch in m.room.channels:
                     socketio.emit('presence_updated', {
@@ -70,7 +106,11 @@ def on_disconnect():
                         'status': current_user.presence_status,
                         'last_seen_iso': current_user.last_seen.strftime('%Y-%m-%dT%H:%M:%SZ') if current_user.last_seen else None
                     }, room=str(ch.id), skip_sid=None)  # Include sender in emission
-    except Exception:
+            print(f"[SOCKET DISCONNECT] User {user_id} disconnect complete")
+    except Exception as e:
+        print(f"[SOCKET DISCONNECT ERROR] {e}")
+        if user_id:
+            print(f"[SOCKET DISCONNECT ERROR] Error for user {user_id}")
         db.session.rollback()
         pass
 

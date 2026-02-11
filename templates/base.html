@@ -112,6 +112,57 @@
         </div>
     </div>
 
+    <!-- Flash messages Modal -->
+    <div class="modal-overlay" id="flashMessageModal" style="z-index: 10100;">
+        <div class="modal">
+            <div class="modal-header" id="flashMessageTitle">Alert</div>
+            <div class="modal-body" id="flashMessageBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-login" onclick="closeFlashModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <script>
+                (function() {
+                    const messages = {{ messages | tojson }};
+                    const message = messages[0]; // Show first message
+                    
+                    function showFlashModal(text) {
+                        const modal = document.getElementById('flashMessageModal');
+                        const body = document.getElementById('flashMessageBody');
+                        const title = document.getElementById('flashMessageTitle');
+                        
+                        if (text.toLowerCase().includes('banned')) {
+                            title.textContent = '🚫 Banned';
+                        } else {
+                            title.textContent = 'Alert';
+                        }
+                        
+                        body.textContent = text;
+                        if (modal) modal.style.display = 'flex';
+                    }
+                    
+                    function closeFlashModal() {
+                        const modal = document.getElementById('flashMessageModal');
+                        if (modal) modal.style.display = 'none';
+                    }
+                    
+                    // Wait a moment for DOM to be ready, then show
+                    setTimeout(() => {
+                        showFlashModal(message);
+                    }, 100);
+                    
+                    // Make closeFlashModal available globally
+                    window.closeFlashModal = closeFlashModal;
+                })();
+            </script>
+        {% endif %}
+    {% endwith %}
+
     {% block content %}{% endblock %}
     </div>
 

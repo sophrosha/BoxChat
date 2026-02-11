@@ -140,7 +140,6 @@
         <div class="members-section">
             <div class="channel-section-title">Members</div>
             {% for m in room.members %}
-                {% if m.role != 'banned' %}
                 <div class="member-item {% if m.role == 'owner' %}owner{% elif m.role == 'admin' %}admin{% endif %}" data-member-user-id="{{ m.user.id }}">
                     {% set p = m.user.presence_status if m.user is not none else 'offline' %}
                     {% if p == 'online' %}
@@ -152,7 +151,6 @@
                     {% endif %}
                     {{ m.user.username }}
                 </div>
-                {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -750,60 +748,16 @@ if (typeof io === 'undefined') {
         // when set, sendMessage will include reply metadata and preview it
         window.replyTo = null; // { id, username, snippet }
 
-        // Context menu for members (right-click)
+        // Click on member to show profile (same as clicking on avatar)
         (function() {
-            const menu = document.createElement('div');
-            menu.id = 'memberContextMenu';
-            menu.style.position = 'absolute';
-            menu.style.zIndex = 9999;
-            menu.style.background = 'var(--bg-surface)';
-            menu.style.border = '1px solid var(--border)';
-            menu.style.padding = '6px';
-            menu.style.borderRadius = '6px';
-            menu.style.display = 'none';
-            document.body.appendChild(menu);
-
-            function hideMenu() { menu.style.display = 'none'; menu.innerHTML = ''; }
-
-            document.addEventListener('click', function() { hideMenu(); });
-            document.addEventListener('scroll', function() { hideMenu(); }, true);
-
             document.querySelectorAll('.member-item').forEach(function(el) {
-                el.addEventListener('contextmenu', function(ev) {
-                    ev.preventDefault(); ev.stopPropagation();
+                el.style.cursor = 'pointer';
+                el.addEventListener('click', function(ev) {
                     const targetUserId = el.getAttribute('data-member-user-id');
                     if (!targetUserId) return;
-
-                    // Only show moderator actions for owner/admin
-                    const canModerate = (window.userRole && (window.userRole === 'owner' || window.userRole === 'admin')) || false;
-                    if (!canModerate) return;
-
-                    menu.innerHTML = '';
-                    const label = document.createElement('div');
-                    label.textContent = 'Member actions';
-                    label.style.fontWeight = '600';
-                    label.style.marginBottom = '6px';
-                    menu.appendChild(label);
-
-                    const delBtn = document.createElement('button');
-                    delBtn.textContent = 'Delete all messages from user';
-                    delBtn.style.display = 'block';
-                    delBtn.style.margin = '4px 0';
-                    delBtn.onclick = function(e) {
-                        e.stopPropagation(); hideMenu();
-                        if (!confirm('Delete ALL messages from this user in the room?')) return;
-                        fetch(`/admin/user/${targetUserId}/delete_messages`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: window.roomId})})
-                        .then(r => r.json())
-                        .then(res => {
-                            if (res.success) { alert('Messages deleted: ' + (res.deleted || 0)); location.reload(); } else { alert(res.error || res.message || 'Error'); }
-                        });
-                    };
-                    menu.appendChild(delBtn);
-
-                    // Position
-                    menu.style.left = (ev.pageX + 4) + 'px';
-                    menu.style.top = (ev.pageY + 4) + 'px';
-                    menu.style.display = 'block';
+                    ev.stopPropagation();
+                    // Show same profile modal as clicking on avatar
+                    showProfile(parseInt(targetUserId), ev);
                 });
             });
         })();
@@ -920,7 +874,7 @@ if (typeof io === 'undefined') {
                     // This event is delivered to the specific user room; redirect immediately
                     const loc = (data && data.location) ? data.location : '/';
                     if (loc) {
-                        try { alert('You have been redirected: ' + (data && data.reason ? data.reason : 'action by moderator')); } catch (e) {}
+                        // Immediately redirect without alert
                         window.location = loc;
                     }
                 } catch (e) { console.error('force_redirect handler error', e); }

@@ -1,6 +1,6 @@
 # BoxChat messenger
 
-BoxChat is simple messenger coded in four days.
+BoxChat is simple self-hosted messenger
 
 It uses following stack:
     backend: python, flask, socket.io, js
@@ -8,7 +8,7 @@ It uses following stack:
 
 ## Launching your own instance
 
-For launching you need python 3.8+ and node.js (for socket.io)
+For launching you need python 3.8+
 
 venv:
 

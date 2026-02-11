@@ -1,17 +1,15 @@
-"""
-Migration helper: add `reply_to_id` column to `message` table.
+# Migration helper: add `reply_to_id` column to `message` table.
 
-This script targets SQLite (the default for the project). It will:
-- read the `SQLALCHEMY_DATABASE_URI` from project `config.py`
-- if it's a SQLite DB file, connect and check whether `reply_to_id` exists
-- if not present, run `ALTER TABLE message ADD COLUMN reply_to_id INTEGER` (nullable)
-- verify success and print instructions
+# This script targets SQLite (the default for the project). It will:
+# read the `SQLALCHEMY_DATABASE_URI` from project `config.py`
+# if it's a SQLite DB file, connect and check whether `reply_to_id` exists
+# if not present, run `ALTER TABLE message ADD COLUMN reply_to_id INTEGER` (nullable)
+# verify success and print instructions
 
-Run from project root:
-    python3 tools/add_reply_column_migration.py
+# Run from project root:
+#    python3 tools/add_reply_column_migration.py
 
-This avoids Alembic and performs a safe, additive change (nullable column).
-"""
+# This avoids Alembic and performs a safe, additive change (nullable column).
 
 import os
 import sys

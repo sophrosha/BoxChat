@@ -290,6 +290,23 @@ socket.on('new_dm_message', function(data) {
         location.reload();
     }
 });
+
+// When a server is removed for this user (e.g. they were banned), remove it from the list
+socket.on('server_removed', function(data) {
+    try {
+        if (!data || !data.room_id) return;
+        const rid = String(data.room_id);
+        const el = document.querySelector(`.server-item[data-room-id="${rid}"]`);
+        if (el) el.remove();
+        // If currently viewing that room, redirect to dashboard
+        try {
+            const pathParts = window.location.pathname.split('/');
+            if (pathParts.includes('room') && pathParts.includes(rid)) {
+                window.location.href = "{{ url_for('main.dashboard') }}";
+            }
+        } catch (e) {}
+    } catch (e) { console.error('server_removed handler error', e); }
+});
 </script>
         </div>
     </div>

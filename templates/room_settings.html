@@ -21,11 +21,11 @@
                         </div>
                         {% endif %}
                         <br>
-                        <input type="file" name="avatar_file" id="avatar_file" accept="image/*" style="display: none;" onchange="previewAvatar(this);">
+                        <input type="file" name="avatar_file" id="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display: none;" onchange="previewAvatar(this);">
                         <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 14px;">
                             <button type="button" class="btn btn-login" onclick="document.getElementById('avatar_file').click();">Upload Server Icon</button>
                             {% if room.avatar_url %}
-                            <button type="button" class="btn" style="background: var(--danger); color: var(--text-main);" onclick="deleteRoomAvatar({{ room.id }});">Delete Icon</button>
+                            <button type="button" class="btn" style="background: var(--danger); color: var(--text-main);" onclick="deleteRoomAvatar('{{ room.id }}');">Delete Icon</button>
                             {% endif %}
                         </div>
                     </div>
@@ -36,11 +36,36 @@
                     </div>
                 </form>
             </div>
+            
+            <div class="card" style="margin-top: 18px;">
+                <h3 style="margin-top: 0;">Banned members</h3>
+                {% set banned = room.members | selectattr('role', 'equalto', 'banned') | list %}
+                {% if banned|length > 0 %}
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    {% for m in banned %}
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px; border:1px solid var(--border); border-radius:6px; background: var(--bg-panel);">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <img src="{{ m.user.avatar_url or 'https://via.placeholder.com/40' }}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
+                            <div>
+                                <div style="font-weight:600;">{{ m.user.username }}</div>
+                                <div style="font-size:0.85rem;color:var(--text-muted);">Banned</div>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn" onclick="unbanFromRoom({{ m.user.id }}, {{ room.id }});">Unban</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div style="color: var(--text-muted);">No banned members</div>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
 
-<script>
+<script type="text/javascript">
 function previewAvatar(input) {
     if (input.files && input.files[0]) {
         const reader = new FileReader();
@@ -61,6 +86,20 @@ function deleteRoomAvatar(roomId) {
             location.reload();
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    });
+}
+</script>
+<script>
+function unbanFromRoom(userId, roomId) {
+    if (!confirm('Unban this user from the room?')) return;
+    fetch(`/admin/user/${userId}/unban`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            location.reload();
+        } else {
+            alert(res.error || res.message || 'Error');
         }
     });
 }

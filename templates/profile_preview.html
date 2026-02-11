@@ -38,9 +38,116 @@
     {% endif %}
     
     {% if profile_user.id != current_user.id %}
-    <div style="margin-top: 16px; text-align: center;">
-        <a href="{{ url_for('main.start_dm', user_id=profile_user.id) }}" class="btn btn-login" style="display: inline-block; width: 100%; text-align: center; text-decoration: none;">Message User</a>
+    <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
+        <a href="{{ url_for('main.start_dm', user_id=profile_user.id) }}" class="btn btn-login" style="flex:1; text-align: center; text-decoration: none;">Message</a>
+        {% if current_user.is_superuser or is_room_creator or (viewer_role in ['owner', 'admin']) %}
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            {% if profile_user.is_banned or profile_member_role == 'banned' %}
+            <button class="btn" id="unbanBtn" style="background: #27ae60; color: white; border: none; padding: 8px 10px; border-radius: 6px;">Unban</button>
+            {% else %}
+            <button class="btn" id="banBtn" style="background: #c0392b; color: white; border: none; padding: 8px 10px; border-radius: 6px;">Ban</button>
+            {% endif %}
+            {% if room_id and profile_member_role != 'banned' %}
+            <button class="btn" id="kickBtn" style="background: #e67e22; color: white; border: none; padding: 8px 10px; border-radius: 6px;">Kick</button>
+            {% if current_user.is_superuser or is_room_creator %}
+                {% if profile_member_role == 'admin' %}
+                <button class="btn" id="demoteBtn" style="background: #7f8c8d; color: white; border: none; padding: 8px 10px; border-radius: 6px;">Demote</button>
+                {% elif profile_member_role == 'owner' %}
+                    <!-- owner: no promote/demote -->
+                {% else %}
+                <button class="btn" id="promoteBtn" style="background: #2980b9; color: white; border: none; padding: 8px 10px; border-radius: 6px;">Promote</button>
+                {% endif %}
+            {% endif %}
+            <button class="btn" id="deleteMessagesBtn" style="background: #8e44ad; color: white; border: none; padding: 8px 10px; border-radius: 6px;">Delete messages</button>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
     {% endif %}
+
+<script>
+    (function() {
+        const userId = {{ profile_user.id | tojson }};
+        const roomId = {{ room_id | tojson }};
+
+        function refreshProfile() {
+            // Use global showProfile to re-fetch and execute scripts
+            try { if (window.showProfile) { window.showProfile(userId); return; } } catch (e) {}
+            fetch(`/profile/${userId}?room_id=${roomId || ''}`)
+            .then(r => r.text())
+            .then(html => {
+                const modal = document.getElementById('profilePreview');
+                if (modal) modal.innerHTML = html;
+            });
+        }
+
+        function callApi(path, opts) {
+            return fetch(path, opts).then(r => r.text().then(text => {
+                try {
+                    const j = JSON.parse(text);
+                    return j;
+                } catch (e) {
+                    return { error: text || `HTTP ${r.status}` };
+                }
+            })).catch(err => ({ error: String(err) }));
+        }
+
+        const banBtn = document.getElementById('banBtn');
+        if (banBtn) banBtn.addEventListener('click', function() {
+            if (!confirm('Ban this user?')) return;
+            // Ask whether to delete messages as part of ban
+            let deleteMsgs = false;
+            try { deleteMsgs = confirm('Also delete ALL messages from this user in the room?'); } catch (e) {}
+            callApi(`/admin/user/${userId}/ban`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reason: 'Banned by moderator', ban_ip: true, room_id: roomId, delete_messages: deleteMsgs})})
+            .then(res => {
+                if (res.success) refreshProfile(); else alert(res.error || res.message || 'Error');
+            });
+        });
+
+        const unbanBtn = document.getElementById('unbanBtn');
+        if (unbanBtn) unbanBtn.addEventListener('click', function() {
+            if (!confirm('Unban this user?')) return;
+            callApi(`/admin/user/${userId}/unban`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+            .then(res => {
+                if (res.success) refreshProfile(); else alert(res.error || res.message || 'Error');
+            });
+        });
+
+        const kickBtn = document.getElementById('kickBtn');
+        if (kickBtn && roomId) kickBtn.addEventListener('click', function() {
+            if (!confirm('Kick this user from this room?')) return;
+            callApi(`/admin/user/${userId}/kick_from_room/${roomId}`, {method: 'POST'})
+            .then(res => {
+                if (res.success) { refreshProfile(); location.reload(); } else alert(res.error || res.message || 'Error');
+            });
+        });
+        const promoteBtn = document.getElementById('promoteBtn');
+        if (promoteBtn && roomId) promoteBtn.addEventListener('click', function() {
+            if (!confirm('Promote this user to admin in this room?')) return;
+            callApi(`/admin/user/${userId}/promote`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+            .then(res => {
+                if (res.success) { refreshProfile(); location.reload(); } else alert(res.error || res.message || 'Error');
+            });
+        });
+
+        const demoteBtn = document.getElementById('demoteBtn');
+        if (demoteBtn && roomId) demoteBtn.addEventListener('click', function() {
+            if (!confirm('Demote this admin to regular member?')) return;
+            callApi(`/admin/user/${userId}/demote`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+            .then(res => {
+                if (res.success) { refreshProfile(); location.reload(); } else alert(res.error || res.message || 'Error');
+            });
+        });
+
+        const deleteMessagesBtn = document.getElementById('deleteMessagesBtn');
+        if (deleteMessagesBtn && roomId) deleteMessagesBtn.addEventListener('click', function() {
+            if (!confirm('Delete ALL messages from this user in the room? This cannot be undone.')) return;
+            callApi(`/admin/user/${userId}/delete_messages`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: roomId})})
+            .then(res => {
+                if (res.success) { alert('Messages deleted: ' + (res.deleted || 0)); refreshProfile(); location.reload(); } else alert(res.error || res.message || 'Error');
+            });
+        });
+    })();
+</script>
 </div>
 

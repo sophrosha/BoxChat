@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""
-Simple migration script to add presence columns to the `user` table for SQLite.
-Usage:
-    python3 tools/add_presence_migration.py
 
-This script is safe to run multiple times: it checks for existing columns before ALTER TABLE.
-It supports SQLite URIs like `sqlite:///thecomboxmsgr.db` configured in `config.py`.
-If your app uses another DB (Postgres/MySQL), don't run this script; use your migration tooling.
-"""
+# Simple migration script to add presence columns to the `user` table for SQLite.
+# Usage:
+#   python3 tools/add_presence_migration.py
+# This script is safe to run multiple times: it checks for existing columns before ALTER TABLE.
+# It supports SQLite URIs like `sqlite:///thecomboxmsgr.db` configured in `config.py`.
+# If your app uses another DB (Postgres/MySQL), don't run this script; use your migration tooling.
+
 import os
 import sqlite3
 import sys

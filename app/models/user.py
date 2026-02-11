@@ -1,20 +1,19 @@
-"""
-User-related models
-"""
+# User-related models
+
 from datetime import datetime
 from flask_login import UserMixin
 from app.extensions import db
 
-
 class User(UserMixin, db.Model):
-    """User model with profile and privacy settings"""
+    # User model with profile and privacy settings
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
     
     # Profile info
     bio = db.Column(db.String(300), default="")
-    avatar_url = db.Column(db.String(300), default="https://via.placeholder.com/50")
+    #avatar_url = db.Column(db.String(300), default="https://via.placeholder.com/50") # old placeholder avatar
+    avatar_url = db.Column(db.String(300))    
     birth_date = db.Column(db.String(20))
     
     # Privacy settings
@@ -28,13 +27,18 @@ class User(UserMixin, db.Model):
     # Permissions
     is_superuser = db.Column(db.Boolean, default=False)
     
+    # Ban management
+    is_banned = db.Column(db.Boolean, default=False)  # Global ban status
+    banned_ips = db.Column(db.Text, default="")  # Comma-separated list of banned IPs
+    ban_reason = db.Column(db.String(500), nullable=True)
+    banned_at = db.Column(db.DateTime, nullable=True)
+    
     # Relationships
     music_tracks = db.relationship('UserMusic', backref='user', lazy=True, cascade='all, delete-orphan')
     memberships = db.relationship('Member', backref='user', lazy=True)
 
-
 class UserMusic(db.Model):
-    """User's music library"""
+    # User's music library
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     title = db.Column(db.String(200), nullable=False)

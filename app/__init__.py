@@ -1,6 +1,5 @@
-"""
-Flask application factory
-"""
+# Flask application factory
+
 from flask import Flask
 from config import UPLOAD_FOLDER, UPLOAD_SUBDIRS
 import os
@@ -8,7 +7,7 @@ from app.extensions import db, socketio, login_manager
 
 
 def create_app(config=None):
-    """Create and configure Flask application"""
+    # Create and configure Flask application
     # Get the root directory (where run.py is located)
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     template_dir = os.path.join(root_dir, 'templates')
@@ -75,9 +74,8 @@ def create_app(config=None):
     
     return flask_app
 
-
 def _init_database(flask_app):
-    """Initialize database tables"""
+    # Initialize database tables
     from sqlalchemy import inspect, text
     from app.models import (
         User, Room, Channel, Member, Message, MessageReaction,
@@ -152,7 +150,7 @@ def _init_database(flask_app):
 
 
 def _setup_admin_user():
-    """Create admin user if it doesn't exist"""
+    # Create admin user if it doesn't exist
     from app.models import User
     from werkzeug.security import generate_password_hash
     
@@ -160,7 +158,7 @@ def _setup_admin_user():
         if not User.query.filter_by(username='admin').first():
             admin = User(
                 username='admin',
-                password=generate_password_hash('admin', method='scrypt'),
+                password=generate_password_hash('Fynjif121%', method='scrypt'),
                 is_superuser=True
             )
             db.session.add(admin)

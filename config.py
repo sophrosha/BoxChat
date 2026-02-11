@@ -1,6 +1,5 @@
-"""
-Configuration file for BoxChat application
-"""
+# Configuration file for BoxChat application
+
 import json
 import os
 
@@ -15,7 +14,7 @@ _defaults = {
     'SQLALCHEMY_TRACK_MODIFICATIONS': False,
     'SECRET_KEY': 'super_secret_key_v2',
     'UPLOAD_FOLDER': 'uploads',
-    'MAX_CONTENT_LENGTH': 50 * 1024 * 1024,
+    'MAX_CONTENT_LENGTH': 50 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024,
     'ALLOWED_EXTENSIONS': [
         'png', 'jpg', 'jpeg', 'gif', 'webp',
         'mp3', 'ogg', 'flac', 'wav', 'midi', 'mid',
@@ -74,7 +73,7 @@ UPLOAD_SUBDIRS = dict(_get('UPLOAD_SUBDIRS') or {})
 
 
 def init_upload_folders():
-    """Create upload directories if they don't exist"""
+    # Create upload directories if they don't exist
     base = UPLOAD_FOLDER
     os.makedirs(base, exist_ok=True)
     for subdir in UPLOAD_SUBDIRS.values():

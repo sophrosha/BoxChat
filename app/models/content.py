@@ -1,12 +1,10 @@
-"""
-Content-related models: messages, reactions, stickers
-"""
+# Content-related models: messages, reactions, stickers
+
 from datetime import datetime
 from app.extensions import db
 
-
 class Message(db.Model):
-    """Chat message"""
+    # Chat message
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -26,9 +24,8 @@ class Message(db.Model):
     user = db.relationship('User', backref='messages')
     reactions = db.relationship('MessageReaction', backref='message', lazy=True, cascade='all, delete-orphan')
 
-
 class MessageReaction(db.Model):
-    """Message reactions (emojis and stickers)"""
+    # Message reactions (emojis and stickers, stickers is not implemented yet)
     id = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -38,9 +35,8 @@ class MessageReaction(db.Model):
     # Relationships
     user = db.relationship('User', backref='reactions')
 
-
 class ReadMessage(db.Model):
-    """Track read messages in channels"""
+    #Track read messages in channels
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     channel_id = db.Column(db.Integer, db.ForeignKey('channel.id'), nullable=False)
@@ -51,9 +47,8 @@ class ReadMessage(db.Model):
     user = db.relationship('User', backref='read_messages')
     channel = db.relationship('Channel', backref='read_by_users')
 
-
 class StickerPack(db.Model):
-    """Collection of stickers"""
+    # Collection of stickers
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     icon_emoji = db.Column(db.String(10), nullable=True)
@@ -64,9 +59,8 @@ class StickerPack(db.Model):
     owner = db.relationship('User', backref='sticker_packs')
     stickers = db.relationship('Sticker', backref='pack', lazy=True, cascade='all, delete-orphan')
 
-
 class Sticker(db.Model):
-    """Individual sticker"""
+    # Individual sticker
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     file_url = db.Column(db.String(500), nullable=False)

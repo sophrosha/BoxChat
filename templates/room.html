@@ -71,7 +71,7 @@
     .channel-section-title { font-size: 0.75rem; text-transform: uppercase; margin: 14px 0 6px 14px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; }
     .members-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
     .member-item { padding: 6px 12px; font-size: 0.9rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; }
-    .member-item.owner { color: var(--primary); font-weight: 600; }
+    .member-item.owner, .member-item.admin { color: var(--primary); font-weight: 600; }
 </style>
 
 <div class="rooms-list">
@@ -140,7 +140,8 @@
         <div class="members-section">
             <div class="channel-section-title">Members</div>
             {% for m in room.members %}
-                <div class="member-item {% if m.role == 'owner' %}owner{% endif %}" data-member-user-id="{{ m.user.id }}">
+                {% if m.role != 'banned' %}
+                <div class="member-item {% if m.role == 'owner' %}owner{% elif m.role == 'admin' %}admin{% endif %}" data-member-user-id="{{ m.user.id }}">
                     {% set p = m.user.presence_status if m.user is not none else 'offline' %}
                     {% if p == 'online' %}
                         <span class="status-dot" data-user-id="{{ m.user.id }}" style="width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px;background:#43b581;"></span>
@@ -151,6 +152,7 @@
                     {% endif %}
                     {{ m.user.username }}
                 </div>
+                {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -328,7 +330,7 @@
     </div>
 
     <!-- Floating Jump-to-Latest Button (FAB) -->
-    <button id="jumpToLatestFAB" title="Jump to latest messages" style="position: fixed; bottom: 120px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: var(--primary); color: var(--bg-dark); border: none; font-size: 1.5rem; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 100; transition: 0.2s;\">↓</button>
+    <!-- button id="jumpToLatestFAB" title="Jump to latest messages" style="position: fixed; bottom: 120px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: var(--primary); color: var(--bg-dark); border: none; font-size: 1.5rem; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 100; transition: 0.2s;\">↓</button-->
 
     {% if room.type == 'broadcast' and member.role not in ['owner', 'admin'] %}
         <div class="chat-input-area" style="text-align: center; color: var(--text-muted); padding: 20px;">
@@ -583,7 +585,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- Load socket.io client from the server (Flask-SocketIO exposes it at /socket.io/socket.io.js). */ -->
-<script src="/socket.io/socket.io.js"></script>
+<script src="/static/js/socket.io.js"></script>
 <script>
 // Fallback to CDN if server copy missing
 if (typeof io === 'undefined') {
@@ -748,6 +750,64 @@ if (typeof io === 'undefined') {
         // when set, sendMessage will include reply metadata and preview it
         window.replyTo = null; // { id, username, snippet }
 
+        // Context menu for members (right-click)
+        (function() {
+            const menu = document.createElement('div');
+            menu.id = 'memberContextMenu';
+            menu.style.position = 'absolute';
+            menu.style.zIndex = 9999;
+            menu.style.background = 'var(--bg-surface)';
+            menu.style.border = '1px solid var(--border)';
+            menu.style.padding = '6px';
+            menu.style.borderRadius = '6px';
+            menu.style.display = 'none';
+            document.body.appendChild(menu);
+
+            function hideMenu() { menu.style.display = 'none'; menu.innerHTML = ''; }
+
+            document.addEventListener('click', function() { hideMenu(); });
+            document.addEventListener('scroll', function() { hideMenu(); }, true);
+
+            document.querySelectorAll('.member-item').forEach(function(el) {
+                el.addEventListener('contextmenu', function(ev) {
+                    ev.preventDefault(); ev.stopPropagation();
+                    const targetUserId = el.getAttribute('data-member-user-id');
+                    if (!targetUserId) return;
+
+                    // Only show moderator actions for owner/admin
+                    const canModerate = (window.userRole && (window.userRole === 'owner' || window.userRole === 'admin')) || false;
+                    if (!canModerate) return;
+
+                    menu.innerHTML = '';
+                    const label = document.createElement('div');
+                    label.textContent = 'Member actions';
+                    label.style.fontWeight = '600';
+                    label.style.marginBottom = '6px';
+                    menu.appendChild(label);
+
+                    const delBtn = document.createElement('button');
+                    delBtn.textContent = 'Delete all messages from user';
+                    delBtn.style.display = 'block';
+                    delBtn.style.margin = '4px 0';
+                    delBtn.onclick = function(e) {
+                        e.stopPropagation(); hideMenu();
+                        if (!confirm('Delete ALL messages from this user in the room?')) return;
+                        fetch(`/admin/user/${targetUserId}/delete_messages`, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({room_id: window.roomId})})
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.success) { alert('Messages deleted: ' + (res.deleted || 0)); location.reload(); } else { alert(res.error || res.message || 'Error'); }
+                        });
+                    };
+                    menu.appendChild(delBtn);
+
+                    // Position
+                    menu.style.left = (ev.pageX + 4) + 'px';
+                    menu.style.top = (ev.pageY + 4) + 'px';
+                    menu.style.display = 'block';
+                });
+            });
+        })();
+
         // Attach handler so playing one audio stops others (for existing audio elements)
         try {
             document.querySelectorAll('audio').forEach(a => {
@@ -830,6 +890,41 @@ if (typeof io === 'undefined') {
                 msgElement.remove();
             }
         });
+
+            socket.on('member_removed', function(data) {
+                try {
+                    if (!data || !data.user_id) return;
+                    const uid = String(data.user_id);
+                    // remove member item from members list
+                    const el = document.querySelector(`.member-item[data-member-user-id="${uid}"]`);
+                    if (el) el.remove();
+                } catch (e) { console.error('member_removed handler error', e); }
+            });
+
+            socket.on('bulk_messages_deleted', function(data) {
+                try {
+                    if (!data || !data.user_id) return;
+                    const uid = String(data.user_id);
+                    // remove all messages from this user in DOM
+                    document.querySelectorAll('.message').forEach(function(m) {
+                        const content = m.querySelector('.message-content');
+                        if (content && content.getAttribute('data-user-id') == uid) {
+                            m.remove();
+                        }
+                    });
+                } catch (e) { console.error('bulk_messages_deleted handler error', e); }
+            });
+
+            socket.on('force_redirect', function(data) {
+                try {
+                    // This event is delivered to the specific user room; redirect immediately
+                    const loc = (data && data.location) ? data.location : '/';
+                    if (loc) {
+                        try { alert('You have been redirected: ' + (data && data.reason ? data.reason : 'action by moderator')); } catch (e) {}
+                        window.location = loc;
+                    }
+                } catch (e) { console.error('force_redirect handler error', e); }
+            });
 
         // Listen for notifications everywhere (not just dashboard)
         socket.on('message_notification', function(data) {
@@ -1911,12 +2006,36 @@ if (typeof io === 'undefined') {
         if (event) {
             event.stopPropagation();
         }
-        fetch(`/profile/${userId}`)
-        .then(r => r.text())
-        .then(html => {
-            const modal = document.getElementById('profilePreview');
-            modal.innerHTML = html;
-            modal.style.display = 'block';
+        fetch(`/profile/${userId}?room_id=${window.roomId || ''}`)
+            .then(r => {
+                return r.text().then(html => ({ ok: r.ok, status: r.status, text: html }));
+            })
+            .then(resp => {
+                const modal = document.getElementById('profilePreview');
+                if (!resp.ok) {
+                    // show error inside modal
+                    modal.innerHTML = `<div style="padding:20px;">Ошибка загрузки профиля (HTTP ${resp.status})</div>`;
+                    modal.style.display = 'block';
+                    return;
+                }
+                // Insert HTML
+                modal.innerHTML = resp.text;
+                modal.style.display = 'block';
+                // Execute any scripts included in the fetched HTML so event handlers bind
+                try {
+                    const scripts = Array.from(modal.querySelectorAll('script'));
+                    scripts.forEach(s => {
+                        const ns = document.createElement('script');
+                        if (s.src) {
+                            ns.src = s.src;
+                            ns.async = false;
+                        } else {
+                            ns.textContent = s.textContent;
+                        }
+                        document.head.appendChild(ns);
+                        s.remove();
+                    });
+                } catch (e) { console.error('Executing profile scripts failed', e); }
             // Position modal near click but ensure it stays inside viewport
             modal.style.transform = 'none';
             if (event) {
@@ -3230,7 +3349,6 @@ if (typeof io === 'undefined') {
     window.toggleStickerPicker = toggleStickerPicker;
     window.showReactionPicker = showReactionPicker;
     window.saveEditedMessage = saveEditedMessage;
-    window.toggleEmojiPicker = toggleEmojiPicker;
 </script>
 
 {% endblock %}

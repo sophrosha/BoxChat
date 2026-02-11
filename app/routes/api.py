@@ -1,10 +1,9 @@
-"""
-API routes (uploads, settings, channel management, message actions)
-"""
+# API routes (uploads, settings, channel management, message actions)
+
 import os
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash, send_from_directory, current_app
 from flask_login import login_required, current_user
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime
 from app.extensions import db, socketio
 from app.models import (
@@ -15,30 +14,28 @@ from app.functions import save_uploaded_file, resize_image, is_image_file, is_mu
 
 api_bp = Blueprint('api', __name__)
 
-
 # Helper functions
 def get_role(user_id, room_id):
-    """Get user role in room"""
+    # Get user role in room
     member = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
     return member.role if member else None
 
 
 def save_file(file, subfolder='files'):
-    """Wrapper for save_uploaded_file that uses current_app's upload folder"""
+    # Wrapper for save_uploaded_file that uses current_app's upload folder
     return save_uploaded_file(file, subfolder, current_app.config['UPLOAD_FOLDER'])
 
 
 def get_upload_folder():
-    """Get upload folder from current app config"""
+    # Get upload folder from current app config
     return current_app.config.get('UPLOAD_FOLDER', 'uploads')
-
 
 # --- CHANNEL MANAGEMENT ---
 
 @api_bp.route('/room/<int:room_id>/add_channel', methods=['POST'])
 @login_required
 def add_channel(room_id):
-    """Add channel to room"""
+    # Add channel to room
     role = get_role(current_user.id, room_id)
     if role not in ['owner', 'admin']:
         return jsonify({'error': 'Нет доступа'}), 403
@@ -50,11 +47,10 @@ def add_channel(room_id):
     
     return redirect(url_for('main.view_room', room_id=room_id))
 
-
 @api_bp.route('/room/<int:room_id>/channel/<int:channel_id>/edit', methods=['POST'])
 @login_required
 def edit_channel(room_id, channel_id):
-    """Edit channel"""
+    # Edit channel
     role = get_role(current_user.id, room_id)
     if role not in ['owner', 'admin']:
         return jsonify({'error': 'Нет доступа'}), 403
@@ -80,11 +76,10 @@ def edit_channel(room_id, channel_id):
     db.session.commit()
     return jsonify({'success': True})
 
-
 @api_bp.route('/room/<int:room_id>/channel/<int:channel_id>/delete', methods=['POST'])
 @login_required
 def delete_channel(room_id, channel_id):
-    """Delete channel"""
+    # Delete channel
     role = get_role(current_user.id, room_id)
     if role not in ['owner', 'admin']:
         return jsonify({'error': 'Нет доступа'}), 403
@@ -97,13 +92,12 @@ def delete_channel(room_id, channel_id):
     db.session.commit()
     return jsonify({'success': True})
 
-
 # --- USER SETTINGS ---
 
 @api_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
-    """User settings page"""
+    # User settings page
     if request.method == 'POST':
         current_user.bio = request.form.get('bio')
         current_user.privacy_searchable = 'privacy_searchable' in request.form
@@ -138,15 +132,14 @@ def settings():
                     'status': current_user.presence_status
                 }, room=str(ch.id), skip_sid=None)
         
-        flash('Настройки обновлены')
+        flash('Settings updated')
     
     return render_template('settings.html', user=current_user)
-
 
 @api_bp.route('/user/avatar/delete', methods=['POST'])
 @login_required
 def delete_user_avatar():
-    """Delete user avatar"""
+    # Delete user avatar
     if current_user.avatar_url and current_user.avatar_url != "https://via.placeholder.com/50":
         if current_user.avatar_url.startswith('/uploads/'):
             try:
@@ -166,34 +159,29 @@ def delete_user_avatar():
 @api_bp.route('/user/delete', methods=['POST'])
 @login_required
 def delete_user_account():
-    """Delete user account and all associated data"""
+    # Delete user account and all associated data
     data = request.json
     password = data.get('password')
     
     if not password:
-        return jsonify({'error': 'Не указан пароль'}), 400
+        return jsonify({'error': 'no password specified'}), 400
     
     if not check_password_hash(current_user.password, password):
-        return jsonify({'error': 'Неверный пароль'}), 403
+        return jsonify({'error': 'wrond password'}), 403
     
     user_id = current_user.id
     
     try:
         # Delete user's music
-        UserMusic.query.filter_by(user_id=user_id).delete()
-        
+        UserMusic.query.filter_by(user_id=user_id).delete()        
         # Delete reactions
         MessageReaction.query.filter_by(user_id=user_id).delete()
-        
         # Delete read messages
         ReadMessage.query.filter_by(user_id=user_id).delete()
-        
         # Delete memberships
         Member.query.filter_by(user_id=user_id).delete()
-        
         # Delete messages
         Message.query.filter_by(user_id=user_id).delete()
-        
         # Delete avatar file
         if current_user.avatar_url and current_user.avatar_url.startswith('/uploads/'):
             try:
@@ -213,15 +201,14 @@ def delete_user_account():
         return jsonify({'success': True})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Ошибка при удалении аккаунта: {str(e)}'}), 500
-
+        return jsonify({'error': f'error while deleting account {str(e)}'}), 500
 
 # --- ROOM SETTINGS ---
 
 @api_bp.route('/room/<int:room_id>/settings', methods=['GET', 'POST'])
 @login_required
 def room_settings(room_id):
-    """Room settings page"""
+    # Room settings page
     room = Room.query.get_or_404(room_id)
     role = get_role(current_user.id, room_id)
     
@@ -249,7 +236,7 @@ def room_settings(room_id):
 @api_bp.route('/channel/<int:channel_id>/mark_read', methods=['POST'])
 @login_required
 def mark_channel_read(channel_id):
-    """Mark channel as read for current user (set last_read to last message)"""
+    # Mark channel as read for current user (set last_read to last message)
     from app.models import Channel, Message, ReadMessage
     ch = Channel.query.get_or_404(channel_id)
     last_msg = Message.query.filter_by(channel_id=channel_id).order_by(Message.id.desc()).first()
@@ -278,12 +265,12 @@ def mark_channel_read(channel_id):
 @api_bp.route('/room/<int:room_id>/avatar/delete', methods=['POST'])
 @login_required
 def delete_room_avatar(room_id):
-    """Delete room avatar"""
+    # Delete room avatar
     room = Room.query.get_or_404(room_id)
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
     if not member or member.role not in ['owner', 'admin']:
-        return jsonify({'error': 'Нет прав'}), 403
+        return jsonify({'error': 'no rights'}), 403
     
     if room.avatar_url:
         if room.avatar_url.startswith('/uploads/'):
@@ -300,19 +287,18 @@ def delete_room_avatar(room_id):
     
     return jsonify({'success': True})
 
-
 # --- FILE UPLOADS ---
 
 @api_bp.route('/upload_file', methods=['POST'])
 @login_required
 def upload_file():
-    """Upload file (image, music, or document)"""
+    # Upload file (image, music, or document
     if 'file' not in request.files:
-        return jsonify({'error': 'Нет файла'}), 400
+        return jsonify({'error': 'no file'}), 400
     
     file = request.files['file']
     if not file or not file.filename:
-        return jsonify({'error': 'Файл не выбран'}), 400
+        return jsonify({'error': 'file not selected'}), 400
     # Save according to type with validation
     if is_image_file(file.filename):
         filepath = save_file(file, 'files')
@@ -328,7 +314,7 @@ def upload_file():
         filetype = 'file'
 
     if not filepath:
-        return jsonify({'error': 'Ошибка сохранения файла'}), 500
+        return jsonify({'error': 'error saving file'}), 500
 
     # Ensure filename is returned (basename of saved path)
     try:
@@ -338,30 +324,28 @@ def upload_file():
 
     return jsonify({'success': True, 'url': filepath, 'type': filetype, 'filename': filename})
 
-
 @api_bp.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    """Serve uploaded file"""
+    # Serve uploaded file
     return send_from_directory(get_upload_folder(), filename)
-
 
 @api_bp.route('/music/add', methods=['POST'])
 @login_required
 def add_music():
-    """Add music to user library"""
+    # Add music to user library
     if 'music_file' not in request.files:
-        return jsonify({'error': 'Нет файла'}), 400
+        return jsonify({'error': 'no file'}), 400
     
     file = request.files['music_file']
     if not file or not file.filename or not is_music_file(file.filename):
-        return jsonify({'error': 'Неверный формат музыки'}), 400
+        return jsonify({'error': 'wrong music format'}), 400
     
     filepath = save_file(file, 'music')
     if not filepath:
-        return jsonify({'error': 'Ошибка загрузки'}), 500
+        return jsonify({'error': 'upload error'}), 500
     
-    title = request.form.get('title', 'Без названия')
-    artist = request.form.get('artist', 'Неизвестный исполнитель')
+    title = request.form.get('title', 'Unknown')
+    artist = request.form.get('artist', 'Unknown artist')
     
     cover_url = None
     if 'cover_file' in request.files:
@@ -385,30 +369,29 @@ def add_music():
 @api_bp.route('/music/<int:music_id>/delete', methods=['POST'])
 @login_required
 def delete_music(music_id):
-    """Delete music from library"""
+    # Delete music from library
     music = UserMusic.query.get_or_404(music_id)
     
     if music.user_id != current_user.id:
-        return jsonify({'error': 'Нет доступа'}), 403
+        return jsonify({'error': 'no access'}), 403
     
     db.session.delete(music)
     db.session.commit()
     
     return jsonify({'success': True})
 
-
 # --- MESSAGE ACTIONS ---
 
 @api_bp.route('/message/<int:message_id>/delete', methods=['POST'])
 @login_required
 def delete_message(message_id):
-    """Delete message"""
+    # Delete message
     message = Message.query.get_or_404(message_id)
     channel = Channel.query.get(message.channel_id)
     room = Room.query.get(channel.room_id) if channel else None
     
     if not room:
-        return jsonify({'error': 'Комната не найдена'}), 404
+        return jsonify({'error': 'room not found'}), 404
     
     role = get_role(current_user.id, room.id)
     try:
@@ -418,7 +401,7 @@ def delete_message(message_id):
     can_delete = is_owner_message or (role in ['owner', 'admin'])
     
     if not can_delete:
-        return jsonify({'error': 'Нет доступа'}), 403
+        return jsonify({'error': 'no access'}), 403
     
     channel_id = message.channel_id
     db.session.delete(message)
@@ -431,15 +414,14 @@ def delete_message(message_id):
     
     return jsonify({'success': True})
 
-
 @api_bp.route('/message/<int:message_id>/edit', methods=['POST'])
 @login_required
 def edit_message(message_id):
-    """Edit message"""
+    # Edit message
     message = Message.query.get_or_404(message_id)
     
     if message.user_id != current_user.id:
-        return jsonify({'error': 'Нет доступа'}), 403
+        return jsonify({'error': 'no access'}), 403
     
     new_content = request.json.get('content', '')
     if new_content:
@@ -470,27 +452,26 @@ def edit_message(message_id):
     response.update(payload)
     return jsonify(response)
 
-
 @api_bp.route('/message/<int:message_id>/forward', methods=['POST'])
 @login_required
 def forward_message(message_id):
-    """Forward message to another channel"""
+    # Forward message
     message = Message.query.get_or_404(message_id)
     target_channel_id = request.json.get('channel_id')
     
     if not target_channel_id:
-        return jsonify({'error': 'Не указан канал'}), 400
+        return jsonify({'error': 'channel not specified'}), 400
     
     target_channel = Channel.query.get(target_channel_id)
     if not target_channel:
-        return jsonify({'error': 'Канал не найден'}), 404
+        return jsonify({'error': 'channel not found'}), 404
     
     role = get_role(current_user.id, target_channel.room_id)
     if not role or role == 'banned':
-        return jsonify({'error': 'Нет доступа'}), 403
+        return jsonify({'error': 'no access'}), 403
     
     # Create forwarded message
-    forwarded_content = f"Переслано от {message.user.username}:\n{message.content}"
+    forwarded_content = f"Forwarded from {message.user.username}:\n{message.content}"
     new_msg = Message(
         content=forwarded_content,
         user_id=current_user.id,
@@ -518,17 +499,16 @@ def forward_message(message_id):
     
     return jsonify({'success': True})
 
-
 @api_bp.route('/message/<int:message_id>/reaction', methods=['POST'])
 @login_required
 def toggle_reaction(message_id):
-    """Add or remove reaction to message"""
+    # Add or remove reaction to message
     message = Message.query.get_or_404(message_id)
     emoji = request.json.get('emoji')
     reaction_type = request.json.get('reaction_type', 'emoji')
     
     if not emoji:
-        return jsonify({'error': 'Не указана реакция'}), 400
+        return jsonify({'error': 'reaction not specified'}), 400
     
     # Check if reaction already exists
     existing = MessageReaction.query.filter_by(
@@ -570,21 +550,20 @@ def toggle_reaction(message_id):
     
     return jsonify({'success': True, 'action': action, 'reactions': reaction_data})
 
-
 # --- ROOM MANAGEMENT ---
 
 @api_bp.route('/room/<int:room_id>/delete', methods=['POST'])
 @login_required
 def delete_room(room_id):
-    """Delete room"""
+    # Delete room
     room = Room.query.get_or_404(room_id)
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
     if not member:
-        return jsonify({'error': 'Вы не являетесь участником'}), 403
+        return jsonify({'error': 'you are not a member'}), 403
     
     if member.role not in ['owner', 'admin']:
-        return jsonify({'error': 'Нет прав для удаления сервера'}), 403
+        return jsonify({'error': 'no rights to delete the server'}), 403
     
     # Delete all members first
     Member.query.filter_by(room_id=room_id).delete()
@@ -594,54 +573,51 @@ def delete_room(room_id):
     
     return jsonify({'success': True})
 
-
 @api_bp.route('/room/<int:room_id>/leave', methods=['POST'])
 @login_required
 def leave_room(room_id):
-    """Leave room"""
+    # Leave room
     room = Room.query.get_or_404(room_id)
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
     if not member:
-        return jsonify({'error': 'Вы не являетесь участником'}), 403
+        return jsonify({'error': 'you are not a member'}), 403
     
     if member.role == 'owner':
-        return jsonify({'error': 'Владелец не может покинуть сервер. Удалите сервер вместо этого.'}), 403
+        return jsonify({'error': 'owner cannot leave his server, delete server for this'}), 403
     
     db.session.delete(member)
     db.session.commit()
     
     return jsonify({'success': True})
-
 
 @api_bp.route('/room/<int:room_id>/delete_dm', methods=['POST'])
 @login_required
 def delete_dm(room_id):
-    """Delete DM"""
+    # Delete DM
     room = Room.query.get_or_404(room_id)
     
     if room.type != 'dm':
-        return jsonify({'error': 'Это не личное сообщение'}), 400
+        return jsonify({'error': 'this is not a dm'}), 400
     
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     if not member:
-        return jsonify({'error': 'Вы не являетесь участником'}), 403
+        return jsonify({'error': 'you are not a member'}), 403
     
     db.session.delete(member)
     db.session.commit()
     
     return jsonify({'success': True})
 
-
 @api_bp.route('/room/<int:room_id>/invite', methods=['POST'])
 @login_required
 def generate_invite(room_id):
-    """Generate invite link"""
+    # Generate invite link
     room = Room.query.get_or_404(room_id)
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
     if not member or member.role not in ['owner', 'admin']:
-        return jsonify({'error': 'Нет прав для создания приглашений'}), 403
+        return jsonify({'error': 'no rights to create a invite'}), 403
     
     import secrets
     if not room.invite_token:
@@ -653,11 +629,10 @@ def generate_invite(room_id):
     
     return jsonify({'success': True, 'invite_url': invite_url})
 
-
 @api_bp.route('/join/<token>')
 @login_required
 def join_room_by_invite(token):
-    """Join room by invite token"""
+    # Join room by invite token
     room = Room.query.filter_by(invite_token=token).first_or_404()
     
     existing_member = Member.query.filter_by(user_id=current_user.id, room_id=room.id).first()
@@ -668,14 +643,13 @@ def join_room_by_invite(token):
     db.session.add(new_member)
     db.session.commit()
     
-    flash(f'Вы присоединились к {room.name}')
+    flash(f'you have joined {room.name}')
     return redirect(url_for('main.view_room', room_id=room.id))
-
 
 @api_bp.route('/channels/accessible')
 @login_required
 def get_accessible_channels():
-    """Get list of accessible channels for forwarding"""
+    # Get list of accessible channels for forwarding
     rooms = db.session.query(Room).join(Member).filter(
         Member.user_id == current_user.id
     ).all()
@@ -693,13 +667,12 @@ def get_accessible_channels():
     
     return jsonify({'channels': channels_list})
 
-
-# --- DESKTOP CLIENT API ENDPOINTS ---
+# --- (future) DESKTOP CLIENT API ENDPOINTS ---
 
 @api_bp.route('/api/v1/user/me', methods=['GET'])
 @login_required
 def get_current_user():
-    """Get current user info - for desktop clients"""
+    # Get current user info - for desktop clients
     return jsonify({
         'id': current_user.id,
         'username': current_user.username,
@@ -711,11 +684,10 @@ def get_current_user():
         'is_superuser': current_user.is_superuser or False
     })
 
-
 @api_bp.route('/api/v1/rooms', methods=['GET'])
 @login_required
 def get_user_rooms():
-    """Get all rooms the user is member of - for desktop clients"""
+    # Get all rooms the user is member of - for desktop clients
     rooms_data = []
     rooms = Room.query.join(Member).filter(Member.user_id == current_user.id).all()
     
@@ -744,11 +716,10 @@ def get_user_rooms():
     
     return jsonify({'rooms': rooms_data})
 
-
 @api_bp.route('/api/v1/channel/<int:channel_id>/messages', methods=['GET'])
 @login_required
 def get_channel_messages(channel_id):
-    """Get messages from a channel - for desktop clients"""
+    # Get messages from a channel - for desktop clients
     channel = Channel.query.get_or_404(channel_id)
     room = channel.room
     
@@ -791,11 +762,10 @@ def get_channel_messages(channel_id):
     
     return jsonify({'messages': messages_data, 'count': len(messages_data)})
 
-
 @api_bp.route('/api/v1/user/<int:user_id>/profile', methods=['GET'])
 @login_required
 def get_user_profile(user_id):
-    """Get user profile - for desktop clients"""
+    # Get user profile - for desktop clients
     user = User.query.get_or_404(user_id)
     return jsonify({
         'id': user.id,
@@ -806,11 +776,10 @@ def get_user_profile(user_id):
         'last_seen': user.last_seen.isoformat() if user.last_seen else None
     })
 
-
 @api_bp.route('/api/v1/search/users', methods=['GET'])
 @login_required
 def search_users():
-    """Search users by username - for desktop clients"""
+    # Search users by username - for desktop clients
     query = request.args.get('q', '', type=str).strip()
     if len(query) < 2:
         return jsonify({'error': 'Query too short', 'users': []}), 400
@@ -829,11 +798,10 @@ def search_users():
     
     return jsonify({'users': users_data})
 
-
 @api_bp.route('/api/v1/search/servers', methods=['GET'])
 @login_required
 def search_servers():
-    """Search public servers - for desktop clients"""
+    # Search public servers - for desktop clients
     query = request.args.get('q', '', type=str).strip()
     if len(query) < 2:
         return jsonify({'error': 'Query too short', 'servers': []}), 400
@@ -854,11 +822,10 @@ def search_servers():
     
     return jsonify({'servers': rooms_data})
 
-
 @api_bp.route('/api/v1/dm/<int:user_id>/create', methods=['POST'])
 @login_required
 def create_dm(user_id):
-    """Create or get DM with user - for desktop clients"""
+    # Create or get DM with user - for desktop clients
     user = User.query.get_or_404(user_id)
     
     # Check if DM already exists
@@ -888,29 +855,33 @@ def create_dm(user_id):
     
     return jsonify({'success': True, 'room_id': dm.id})
 
-
 @api_bp.route('/api/v1/room/<int:room_id>/join', methods=['POST'])
 @login_required
 def join_room_api(room_id):
-    """Join a room - for desktop clients"""
+    # Join a room - for desktop clients
     room = Room.query.get_or_404(room_id)
-    
+    # Block globally banned users
+    if getattr(current_user, 'is_banned', False):
+        return jsonify({'error': 'your accound is blocked'}), 403
+
     # Check if already member
     existing = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     if existing:
+        # If membership exists but is 'banned', prevent join
+        if existing.role == 'banned':
+            return jsonify({'error': 'you are banned in this room'}), 403
         return jsonify({'success': True, 'message': 'Already a member'})
-    
+
     member = Member(user_id=current_user.id, room_id=room_id, role='member')
     db.session.add(member)
     db.session.commit()
-    
-    return jsonify({'success': True, 'message': 'Joined room'})
 
+    return jsonify({'success': True, 'message': 'Joined room'})
 
 @api_bp.route('/api/v1/statistics', methods=['GET'])
 @login_required
 def get_statistics():
-    """Get user statistics - for desktop clients"""
+    # Get user statistics - for desktop clients
     msg_count = Message.query.filter_by(user_id=current_user.id).count()
     room_count = Member.query.filter_by(user_id=current_user.id).count()
     
@@ -920,3 +891,502 @@ def get_statistics():
         'user_id': current_user.id
     })
 
+# --- ADMIN FUNCTIONS ---
+
+def get_client_ip():
+    # Safely get client IP address
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr
+
+@api_bp.route('/admin/user/<int:user_id>/ban', methods=['POST'])
+@login_required
+def ban_user(user_id):
+    # Ban user by admin - blocks by IP and marks as banned
+    user = User.query.get_or_404(user_id)
+    
+    if user.is_superuser:
+        return jsonify({'error': 'its impossible to ban an admin'}), 403
+    
+    data = request.json or {}
+    ban_reason = data.get('reason', 'tos violation')
+    ban_ip = data.get('ban_ip', True)
+    room_id = data.get('room_id')
+    try:
+        room_id = int(room_id) if room_id is not None and room_id != '' else None
+    except Exception:
+        room_id = None
+
+    # If room_id provided, allow room owner/admins to ban within that room
+    if room_id:
+        admin_member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+        room = Room.query.get(room_id)
+        # Allow if requester is room owner, room admin, or global superuser
+        allowed = False
+        if current_user.is_superuser:
+            allowed = True
+        if room and room.owner_id == current_user.id:
+            allowed = True
+        if admin_member and admin_member.role in ['owner', 'admin']:
+            allowed = True
+        if not allowed:
+            debug = {
+                'current_user_id': current_user.id,
+                'room_id': room_id,
+                'room_owner_id': room.owner_id if room else None,
+                'admin_member_role': admin_member.role if admin_member else None
+            }
+            return jsonify({'error': 'not enough rights to ban in this room', 'debug': debug}), 403
+
+        # Mark target membership as 'banned' so it can be unbanned later
+        target_membership = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
+        if target_membership:
+            target_membership.role = 'banned'
+            db.session.commit()
+
+            # Optional deletion of messages in room
+            if data.get('delete_messages'):
+                try:
+                    channel_ids = [c.id for c in target_membership.room.channels]
+                    if channel_ids:
+                        deleted = Message.query.filter(Message.user_id == user_id, Message.channel_id.in_(channel_ids)).delete(synchronize_session=False)
+                        db.session.commit()
+                        try:
+                            socketio.emit('bulk_messages_deleted', {'user_id': user_id, 'room_id': room_id, 'deleted': deleted}, room=str(room_id))
+                        except Exception:
+                            pass
+                except Exception:
+                    db.session.rollback()
+
+            # Notify room members to remove this member from UI
+            try:
+                socketio.emit('member_removed', {'user_id': user_id, 'room_id': room_id}, room=str(room_id))
+            except Exception:
+                pass
+
+            # Notify the banned user (personal room) to redirect to dashboard and remove this server from their list
+            try:
+                from flask import url_for
+                socketio.emit('force_redirect', {'reason': 'banned', 'location': url_for('main.dashboard')}, room=f"user_{user_id}")
+                socketio.emit('server_removed', {'room_id': room_id}, room=f"user_{user_id}")
+            except Exception:
+                pass
+
+            return jsonify({'success': True, 'message': f'user {user.username} banned in room', 'room_id': room_id})
+        else:
+            return jsonify({'error': 'user is not in the room'}), 404
+
+    # Global ban (no room_id) — only superusers
+    if not current_user.is_superuser:
+        return jsonify({'error': 'not enough rights'}), 403
+
+    # Mark user as banned globally
+    user.is_banned = True
+    user.ban_reason = ban_reason
+    user.banned_at = datetime.utcnow()
+
+    # Add IP to banned list if requested
+    if ban_ip:
+        user_ip = get_client_ip()
+        if user.banned_ips:
+            ips = [ip.strip() for ip in user.banned_ips.split(',') if ip.strip()]
+        else:
+            ips = []
+
+        if user_ip not in ips:
+            ips.append(user_ip)
+            user.banned_ips = ','.join(ips)
+
+    # Mark the user's memberships as 'banned' in all rooms (preserve record so unban is possible)
+    memberships = Member.query.filter_by(user_id=user_id).all()
+    room_ids = [m.room_id for m in memberships]
+    for m in memberships:
+        m.role = 'banned'
+    db.session.commit()
+
+    # Optional deletion of all messages for global ban
+    if data.get('delete_messages'):
+        try:
+            deleted = Message.query.filter(Message.user_id == user_id).delete(synchronize_session=False)
+            db.session.commit()
+            try:
+                for rid in set(room_ids):
+                    try:
+                        socketio.emit('bulk_messages_deleted', {'user_id': user_id, 'room_id': rid, 'deleted': deleted}, room=str(rid))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            db.session.rollback()
+
+    # Notify affected rooms and the user
+    try:
+        for rid in set(room_ids):
+            try:
+                socketio.emit('member_removed', {'user_id': user_id, 'room_id': rid}, room=str(rid))
+            except Exception:
+                pass
+        from flask import url_for
+        socketio.emit('force_redirect', {'reason': 'banned', 'location': url_for('main.dashboard')}, room=f"user_{user_id}")
+        # Also tell the user's client to remove these servers from their dashboard immediately
+        try:
+            for rid in set(room_ids):
+                socketio.emit('server_removed', {'room_id': rid}, room=f"user_{user_id}")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    return jsonify({
+        'success': True,
+        'message': f'user {user.username} is banned',
+        'user_id': user_id,
+        'reason': ban_reason
+    })
+
+@api_bp.route('/admin/user/<int:user_id>/unban', methods=['POST'])
+@login_required
+def unban_user(user_id):
+    # Unban user by admin
+    data = request.json or {}
+    room_id = data.get('room_id')
+    try:
+        room_id = int(room_id) if room_id is not None and room_id != '' else None
+    except Exception:
+        room_id = None
+
+    user = User.query.get_or_404(user_id)
+
+    # If room_id provided, allow room owner/admins to unban within that room
+    if room_id:
+        admin_member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+        room = Room.query.get(room_id)
+        allowed = False
+        if current_user.is_superuser:
+            allowed = True
+        if room and room.owner_id == current_user.id:
+            allowed = True
+        if admin_member and admin_member.role in ['owner', 'admin']:
+            allowed = True
+        if not allowed:
+            debug = {
+                'current_user_id': current_user.id,
+                'room_id': room_id,
+                'room_owner_id': room.owner_id if room else None,
+                'admin_member_role': admin_member.role if admin_member else None
+            }
+            return jsonify({'error': 'not enough rights no unban in this room', 'debug': debug}), 403
+
+        membership = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
+        if not membership:
+            return jsonify({'error': 'user is not in the room'}), 404
+        if membership.role == 'banned':
+            membership.role = 'member'
+            db.session.commit()
+            return jsonify({'success': True, 'message': f'user {user.username} unbanned in room', 'room_id': room_id})
+        return jsonify({'error': 'user is not banned in this toom'}), 400
+
+    # Global unban — only superusers
+    if not current_user.is_superuser:
+        return jsonify({'error': 'not enough rights'}), 403
+
+    # Mark user as unbanned globally
+    user.is_banned = False
+    user.ban_reason = None
+    user.banned_at = None
+    user.banned_ips = ""
+
+    # Reset member roles to 'member' in all rooms (but preserve owner/admin roles)
+    memberships = Member.query.filter_by(user_id=user_id).all()
+    for membership in memberships:
+        if membership.role == 'banned':
+            membership.role = 'member'
+
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': f'user {user.username} is unbanned',
+        'user_id': user_id
+    })
+
+@api_bp.route('/admin/user/<int:user_id>/change_password', methods=['POST'])
+@login_required
+def admin_change_password(user_id):
+    # Admin can change user password
+    if not current_user.is_superuser:
+        return jsonify({'error': 'not enough rights'}), 403
+    
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    new_password = data.get('password')
+    
+    if not new_password or len(new_password) < 6:
+        return jsonify({'error': 'password should be at least 6 symbols'}), 400
+    
+    user.password = generate_password_hash(new_password, method='scrypt')
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': f'password of user {user.username} is changed'
+    })
+
+# USER SETTINGS - Password change
+@api_bp.route('/user/change_password', methods=['POST'])
+@login_required
+def change_password():
+    # User changes their own password
+    data = request.json
+    old_password = data.get('old_password')
+    new_password = data.get('new_password')
+    confirm_password = data.get('confirm_password')
+    
+    if not old_password or not new_password:
+        return jsonify({'error': 'fill in all fields'}), 400
+    
+    if not check_password_hash(current_user.password, old_password):
+        return jsonify({'error': 'old password is wrong'}), 403
+    
+    if new_password != confirm_password:
+        return jsonify({'error': 'passwords not matches'}), 400
+    
+    if len(new_password) < 6:
+        return jsonify({'error': 'password should be at least 6 symbols'}), 400
+    
+    if new_password == old_password:
+        return jsonify({'error': 'new password should differ from old'}), 400
+    
+    current_user.password = generate_password_hash(new_password, method='scrypt')
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': 'password changed successfully'
+    })
+
+@api_bp.route('/admin/banned_ips', methods=['GET'])
+@login_required
+def get_banned_ips():
+    # Get list of all banned IPs
+    if not current_user.is_superuser:
+        return jsonify({'error': 'not enough rights'}), 403
+    
+    banned_users = User.query.filter_by(is_banned=True).all()
+    banned_ips_list = {}
+    
+    for user in banned_users:
+        if user.banned_ips:
+            ips = [ip.strip() for ip in user.banned_ips.split(',') if ip.strip()]
+            for ip in ips:
+                if ip not in banned_ips_list:
+                    banned_ips_list[ip] = []
+                banned_ips_list[ip].append({
+                    'username': user.username,
+                    'user_id': user.id,
+                    'reason': user.ban_reason,
+                    'banned_at': user.banned_at.isoformat() if user.banned_at else None
+                })
+    
+    return jsonify({
+        'success': True,
+        'banned_ips': banned_ips_list,
+        'total_ips': len(banned_ips_list)
+    })
+
+@api_bp.route('/admin/user/<int:user_id>/kick_from_room/<int:room_id>', methods=['POST'])
+@login_required
+def kick_user_from_room(user_id, room_id):
+    # Kick user from specific room
+    # Check if requester is admin/owner of room
+    try:
+        room_id = int(room_id)
+    except Exception:
+        return jsonify({'error': 'wrong room_id'}), 400
+
+    admin_member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    room = Room.query.get(room_id)
+    allowed = False
+    if current_user.is_superuser:
+        allowed = True
+    if room and room.owner_id == current_user.id:
+        allowed = True
+    if admin_member and admin_member.role in ['owner', 'admin']:
+        allowed = True
+    if not allowed:
+        debug = {
+            'current_user_id': current_user.id,
+            'room_id': room_id,
+            'room_owner_id': room.owner_id if room else None,
+            'admin_member_role': admin_member.role if admin_member else None
+        }
+        return jsonify({'error': 'not enough rights', 'debug': debug}), 403
+    
+    target_member = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
+    if not target_member:
+        return jsonify({'error': 'user is not in the room'}), 404
+
+    # Do not allow kicking a user who is marked as banned (ban should persist until unban)
+    if target_member.role == 'banned':
+        return jsonify({'error': 'the user is already banned, cannot kick'}), 400
+
+    db.session.delete(target_member)
+    db.session.commit()
+
+    # Notify room and target user
+    try:
+        socketio.emit('member_removed', {'user_id': user_id, 'room_id': room_id}, room=str(room_id))
+    except Exception:
+        pass
+    try:
+        from flask import url_for
+        socketio.emit('force_redirect', {'reason': 'kicked', 'location': url_for('main.dashboard')}, room=f"user_{user_id}")
+    except Exception:
+        pass
+
+    return jsonify({
+        'success': True,
+        'message': f'user is kicked from the room'
+    })
+
+
+@api_bp.route('/admin/user/<int:user_id>/promote', methods=['POST'])
+@login_required
+def promote_user(user_id):
+    # Promote a user to admin within a room. Expects JSON with room_id
+    data = request.json or {}
+    room_id = data.get('room_id')
+    try:
+        room_id = int(room_id) if room_id is not None and room_id != '' else None
+    except Exception:
+        room_id = None
+    if not room_id:
+        return jsonify({'error': 'room_id is not specified'}), 400
+    # Requester must be owner/admin in that room or superuser
+    admin_member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    room = Room.query.get(room_id)
+    allowed = False
+    if current_user.is_superuser:
+        allowed = True
+    if room and room.owner_id == current_user.id:
+        allowed = True
+    if admin_member and admin_member.role in ['owner', 'admin']:
+        allowed = True
+    if not allowed:
+        debug = {
+            'current_user_id': current_user.id,
+            'room_id': room_id,
+            'room_owner_id': room.owner_id if room else None,
+            'admin_member_role': admin_member.role if admin_member else None
+        }
+        return jsonify({'error': 'not enough rights', 'debug': debug}), 403
+
+    target_member = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
+    if not target_member:
+        return jsonify({'error': 'user is not in the room'}), 404
+
+    # Prevent promoting owner away or no-op if already admin
+    if target_member.role == 'owner':
+        return jsonify({'error': 'cannot change the owners role'}), 400
+
+    target_member.role = 'admin'
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'user promoted to admin'})
+
+
+@api_bp.route('/admin/user/<int:user_id>/demote', methods=['POST'])
+@login_required
+def demote_user(user_id):
+    # Demote an admin back to member within a room. Expects JSON with room_id
+    data = request.json or {}
+    room_id = data.get('room_id')
+    try:
+        room_id = int(room_id) if room_id is not None and room_id != '' else None
+    except Exception:
+        room_id = None
+    if not room_id:
+        return jsonify({'error': 'room_id is not specified'}), 400
+
+    # Only room creator (owner) or superuser can demote
+    room = Room.query.get(room_id)
+    allowed = False
+    if current_user.is_superuser:
+        allowed = True
+    if room and room.owner_id == current_user.id:
+        allowed = True
+    if not allowed:
+        admin_member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+        debug = {
+            'current_user_id': current_user.id,
+            'room_id': room_id,
+            'room_owner_id': room.owner_id if room else None,
+            'admin_member_role': admin_member.role if admin_member else None
+        }
+        return jsonify({'error': 'not enough rights', 'debug': debug}), 403
+
+    target_member = Member.query.filter_by(user_id=user_id, room_id=room_id).first()
+    if not target_member:
+        return jsonify({'error': 'user is not in the room'}), 404
+
+    if target_member.role == 'owner':
+        return jsonify({'error': 'cannot change the owners role'}), 400
+
+    if target_member.role != 'admin':
+        return jsonify({'error': 'user is not an admin'}), 400
+
+    target_member.role = 'member'
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'user is demoted to member'})
+
+
+@api_bp.route('/admin/user/<int:user_id>/delete_messages', methods=['POST'])
+@login_required
+def delete_user_messages(user_id):
+    # Delete all messages from a user in a specific room (owner/admin allowed). Expects JSON {room_id}
+    # Emits a `bulk_messages_deleted` socket event for the room with user_id
+    data = request.json or {}
+    room_id = data.get('room_id')
+    try:
+        room_id = int(room_id) if room_id is not None and room_id != '' else None
+    except Exception:
+        room_id = None
+    if not room_id:
+        return jsonify({'error': 'room_id is not specified'}), 400
+
+    room = Room.query.get(room_id)
+    if not room:
+        return jsonify({'error': 'room is not found'}), 404
+
+    admin_member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    allowed = False
+    if current_user.is_superuser:
+        allowed = True
+    if room and room.owner_id == current_user.id:
+        allowed = True
+    if admin_member and admin_member.role in ['owner', 'admin']:
+        allowed = True
+    if not allowed:
+        debug = {
+            'current_user_id': current_user.id,
+            'room_id': room_id,
+            'room_owner_id': room.owner_id if room else None,
+            'admin_member_role': admin_member.role if admin_member else None
+        }
+        return jsonify({'error': 'not enough rights', 'debug': debug}), 403
+
+    # collect channel ids for the room
+    channel_ids = [c.id for c in room.channels]
+    if not channel_ids:
+        return jsonify({'success': True, 'deleted': 0})
+
+    # delete messages from these channels by user
+    deleted = Message.query.filter(Message.user_id == user_id, Message.channel_id.in_(channel_ids)).delete(synchronize_session=False)
+    db.session.commit()
+
+    # Notify room listeners that messages from this user were removed
+    socketio.emit('bulk_messages_deleted', {'user_id': user_id, 'room_id': room_id, 'deleted': deleted}, room=str(room_id))
+
+    return jsonify({'success': True, 'deleted': deleted, 'room_id': room_id})

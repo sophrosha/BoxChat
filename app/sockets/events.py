@@ -1,6 +1,5 @@
-"""
-Socket.IO event handlers
-"""
+# Socket.IO event handlers
+
 from flask_socketio import join_room, leave_room, emit
 from flask_login import current_user
 from app.extensions import db, socketio
@@ -8,10 +7,9 @@ from app.models import Message, Member, Room, Channel, ReadMessage, User
 from datetime import datetime
 import os
 
-
 @socketio.on('join')
 def on_join(data):
-    """Join a channel room"""
+    # Join a channel room
     channel_id = data.get('channel_id')
     
     if channel_id:
@@ -24,10 +22,9 @@ def on_join(data):
     except:
         pass
 
-
 @socketio.on('connect')
 def on_connect():
-    """Handle new socket connection: mark user online and notify rooms"""
+    # Handle new socket connection: mark user online and notify rooms
     try:
         if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
             # Respect user's hide_status preference
@@ -54,7 +51,7 @@ def on_connect():
 
 @socketio.on('disconnect')
 def on_disconnect():
-    """Mark user offline and notify rooms"""
+    # Mark user offline and notify rooms
     try:
         if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
             # Respect hide_status: if hidden, keep hidden; otherwise set offline
@@ -80,7 +77,7 @@ def on_disconnect():
 
 @socketio.on('send_message')
 def handle_send_message(data):
-    """Handle incoming message"""
+    # Handle incoming message
     import sys
     print(f"[handle_send_message] START - from user {current_user.id} ({current_user.username})", file=sys.stderr)
     

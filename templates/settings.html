@@ -285,7 +285,7 @@
                     <span class="material-icons-round" style="font-size: 64px; color: var(--text-muted);">person</span>
                 </div>
                 {% endif %}
-                <input type="file" name="avatar_file" id="avatar_file" accept="image/*" style="display: none;" onchange="previewAvatar(this);">
+                        <input type="file" name="avatar_file" id="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display: none;" onchange="previewAvatar(this);">
                 <div class="button-group">
                     <button type="button" class="btn btn-primary" onclick="document.getElementById('avatar_file').click();">📤 Upload Avatar</button>
                     {% if user.avatar_url and user.avatar_url != "https://via.placeholder.com/50" %}
@@ -320,6 +320,33 @@
                 <button type="button" class="btn btn-danger" onclick="deleteAccount();">🗑️ Delete Account</button>
             </div>
         </form>
+    </div>
+
+    <!-- Password Change Section -->
+    <div class="settings-section">
+        <h2 class="section-title">🔐 Password & Security</h2>
+        
+        <div class="input-group">
+            <label class="input-label">Current Password</label>
+            <input type="password" id="old_password" class="custom-input" placeholder="Enter your current password">
+        </div>
+
+        <div class="input-group">
+            <label class="input-label">New Password</label>
+            <input type="password" id="new_password" class="custom-input" placeholder="Enter new password (min. 8 characters, must include letters and numbers)">
+            <small style="color: var(--text-muted); margin-top: 6px; display: block;">
+                ⚠️ Must contain: uppercase, lowercase, and numbers
+            </small>
+        </div>
+
+        <div class="input-group">
+            <label class="input-label">Confirm New Password</label>
+            <input type="password" id="confirm_password" class="custom-input" placeholder="Confirm new password">
+        </div>
+
+        <div class="button-row">
+            <button type="button" class="btn btn-primary" onclick="changePassword();">🔄 Change Password</button>
+        </div>
     </div>
 
     <!-- Music Library Section -->
@@ -359,7 +386,7 @@
             <div class="form-grid">
                 <div class="input-group">
                     <label class="input-label">Music File</label>
-                    <input type="file" id="music_file" accept="audio/*" class="custom-input">
+                    <input type="file" id="music_file" accept="audio/mpeg,audio/ogg,audio/wav,audio/flac" class="custom-input">
                 </div>
                 <div class="input-group">
                     <label class="input-label">Title</label>
@@ -371,7 +398,7 @@
                 </div>
                 <div class="input-group">
                     <label class="input-label">Cover Image</label>
-                    <input type="file" id="music_cover" accept="image/*" class="custom-input">
+                    <input type="file" id="music_cover" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" class="custom-input">
                 </div>
             </div>
             <button type="button" class="btn btn-primary" onclick="addMusic()">➕ Add Music</button>
@@ -470,6 +497,66 @@ function deleteAccount() {
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
+    });
+}
+
+function changePassword() {
+    const oldPassword = document.getElementById('old_password').value;
+    const newPassword = document.getElementById('new_password').value;
+    const confirmPassword = document.getElementById('confirm_password').value;
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+        alert('Please fill in all password fields');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        alert('New passwords do not match');
+        return;
+    }
+
+    if (newPassword.length < 8) {
+        alert('New password must be at least 8 characters long');
+        return;
+    }
+
+    // Check password strength
+    const hasUpper = /[A-Z]/.test(newPassword);
+    const hasLower = /[a-z]/.test(newPassword);
+    const hasDigit = /[0-9]/.test(newPassword);
+
+    if (!hasUpper || !hasLower || !hasDigit) {
+        alert('Password must contain uppercase letters, lowercase letters, and numbers');
+        return;
+    }
+
+    if (newPassword === oldPassword) {
+        alert('New password must be different from current password');
+        return;
+    }
+
+    fetch('/user/change_password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            old_password: oldPassword,
+            new_password: newPassword,
+            confirm_password: confirmPassword
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('✓ Your password has been successfully changed!');
+            document.getElementById('old_password').value = '';
+            document.getElementById('new_password').value = '';
+            document.getElementById('confirm_password').value = '';
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        alert('Network error: ' + err.message);
     });
 }
 </script>

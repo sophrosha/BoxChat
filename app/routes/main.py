@@ -1,6 +1,5 @@
-"""
-Main routes (dashboard, explore, rooms)
-"""
+# Main routes (dashboard, explore, rooms)
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from datetime import datetime
@@ -9,11 +8,10 @@ from app.models import Room, Channel, Member, Message, ReadMessage, User
 
 main_bp = Blueprint('main', __name__)
 
-
 @main_bp.route('/')
 @login_required
 def dashboard():
-    """Main dashboard - shows DMs and servers"""
+    # Main dashboard - shows DMs and servers
     # Get DMs with unread count
     dms_query = db.session.query(Room, Member).join(Member).filter(
         Member.user_id == current_user.id, 
@@ -65,7 +63,8 @@ def dashboard():
     
     # Get servers/channels with roles
     servers_query = db.session.query(Room, Member).join(Member).filter(
-        Member.user_id == current_user.id, 
+        Member.user_id == current_user.id,
+        Member.role != 'banned',
         Room.type.in_(['server', 'broadcast'])
     ).all()
     
@@ -93,7 +92,7 @@ def dashboard():
 @main_bp.route('/explore')
 @login_required
 def explore():
-    """Explore public rooms and users"""
+    # Explore public rooms and users
     query = request.args.get('q', '')
     users = []
     rooms = []
@@ -120,7 +119,7 @@ def explore():
 @main_bp.route('/create_room', methods=['POST'])
 @login_required
 def create_room():
-    """Create new room/server"""
+    # Create new room/server
     name = request.form.get('name')
     rtype = request.form.get('type')  # server, broadcast
     is_public = 'is_public' in request.form
@@ -144,7 +143,7 @@ def create_room():
 @main_bp.route('/start_dm/<int:user_id>')
 @login_required
 def start_dm(user_id):
-    """Start direct message with user"""
+    # Start direct message with user
     other = User.query.get_or_404(user_id)
     
     # Check if DM already exists
@@ -184,7 +183,7 @@ def start_dm(user_id):
 @main_bp.route('/room/<int:room_id>')
 @login_required
 def view_room(room_id):
-    """View room and messages"""
+    # View room and messages
     room = Room.query.get_or_404(room_id)
     member = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
     
@@ -271,40 +270,71 @@ def view_room(room_id):
         }
     )
 
-
 @main_bp.route('/join_room/<int:room_id>')
 @login_required
 def join_room_view(room_id):
-    """Join public room"""
+    # Join public room
     room = Room.query.get_or_404(room_id)
+    # Block globally banned users from joining
+    if getattr(current_user, 'is_banned', False):
+        flash('your account is banned and cannot join rooms')
+        return redirect(url_for('main.dashboard'))
+    # If there's an existing membership marked as banned, prevent re-join
+    existing = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+    if existing and existing.role == 'banned':
+        flash('you are banned from this room and cannot join')
+        return redirect(url_for('main.dashboard'))
     
     if room.is_public:
-        if not Member.query.filter_by(user_id=current_user.id, room_id=room_id).first():
+        if not existing:
             m = Member(user_id=current_user.id, room_id=room_id, role='member')
             db.session.add(m)
             db.session.commit()
     
     return redirect(url_for('main.view_room', room_id=room_id))
 
-
 @main_bp.route('/join/invite/<token>')
 @login_required
 def join_room_by_invite(token):
-    """Join room by invite token"""
+    # Join room by invite token
     room = Room.query.filter_by(invite_token=token).first_or_404()
-    
+    # Block globally banned users
+    if getattr(current_user, 'is_banned', False):
+        flash('your account is banned and cannot join rooms')
+        return redirect(url_for('main.dashboard'))
+
+    existing = Member.query.filter_by(user_id=current_user.id, room_id=room.id).first()
+    if existing and existing.role == 'banned':
+        flash('you are banned from this room and cannot join')
+        return redirect(url_for('main.dashboard'))
+
     # Check if user is already a member
-    if not Member.query.filter_by(user_id=current_user.id, room_id=room.id).first():
+    if not existing:
         m = Member(user_id=current_user.id, room_id=room.id, role='member')
         db.session.add(m)
         db.session.commit()
     
     return redirect(url_for('main.view_room', room_id=room.id))
 
-
 @main_bp.route('/profile/<int:user_id>')
 @login_required
 def view_profile(user_id):
-    """View user profile"""
+    # View user profile
     user = User.query.get_or_404(user_id)
-    return render_template('profile_preview.html', profile_user=user, current_user=current_user)
+    # Optionally accept room_id to determine viewer role inside that room
+    room_id = request.args.get('room_id', type=int)
+    viewer_role = None
+    is_room_creator = False
+    profile_member_role = None
+    if room_id:
+        m = Member.query.filter_by(user_id=current_user.id, room_id=room_id).first()
+        if m:
+            viewer_role = m.role
+        # determine if current_user is room creator and get target's role in that room
+        room = Room.query.get(room_id)
+        if room and room.owner_id == current_user.id:
+            is_room_creator = True
+        target_m = Member.query.filter_by(user_id=user.id, room_id=room_id).first()
+        if target_m:
+            profile_member_role = target_m.role
+    return render_template('profile_preview.html', profile_user=user, current_user=current_user, viewer_role=viewer_role, room_id=room_id, is_room_creator=is_room_creator, profile_member_role=profile_member_role)

@@ -1,5 +1,4 @@
-{ pkgs ? import <nixpkgs> {} }:
-
+{pkgs ? import <nixpkgs> {}}:
 pkgs.mkShell {
   buildInputs = [
     pkgs.nodejs
@@ -19,4 +18,3 @@ pkgs.mkShell {
     echo "NodeJS & npm are available: you can run 'npm install' to add client-side packages."
   '';
 }
-

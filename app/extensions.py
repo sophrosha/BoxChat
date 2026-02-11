@@ -1,14 +1,13 @@
-"""
-Flask extensions initialization
-Helps avoid circular imports by initializing extensions without app context
-"""
+# Flask extensions initialization
+# Helps avoid circular imports by initializing extensions without app context
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
 from flask_login import LoginManager
 
 db = SQLAlchemy()
 socketio = SocketIO(
-    async_mode='threading',
+    async_mode='eventlet',
     cors_allowed_origins='*',
     ping_timeout=60,
     ping_interval=25,
